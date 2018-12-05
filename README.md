@@ -7,3 +7,5 @@ pytorch 0.4.1.post2
 CUDA 9.0
 cudnn 7.3.1
 ```
+## Example List
+- VAE(Variational Autoencoder)
