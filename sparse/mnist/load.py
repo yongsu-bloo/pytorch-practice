@@ -24,13 +24,17 @@ def main():
     # load and accuracy comparison
     acc_dict = {}
     time_dict = {}
-    for activation in ['relu', 'lrelu', 'prelu']:
+    loss_dict = {}
+    for activation in ['relu', 'lrelu']:
         acc_dict[activation] = {}
         time_dict[activation] = {}
-        for reg_type in ["base", "L1", "L2",'elastic']:
+        loss_dict[activation] = {}
+        for reg_type in ["base", "L1", "L2"]:
             acc_list=[]
             time_list=[]
-            for manualSeed in [111*(i+1) for i in range(9)]:
+            loss_list=[]
+            for manualSeed in [1*(i+1) for i in range(9)]:
+            # for manualSeed in [2]:
                 # print("\nRandom Seed\n: ", manualSeed)
                 # checkpoint loading
                 PATH = "./neu_saved_models/{}_{}_{}.pt".format(activation, reg_type, manualSeed)
@@ -48,6 +52,7 @@ def main():
                 time_list.append(times)
                 acc_dict[activation][reg_type] = np.mean(acc_list, axis=0)
                 time_dict[activation][reg_type] = np.mean(time_list, axis=0)
+                loss_dict[activation][reg_type] = np.mean(loss_list, axis=0)
 
     # acc_mean = {}
     # for acc_dict in acc_list:
@@ -69,19 +74,30 @@ def main():
     plt.legend()
     plt.show()
     # time graph
-    # plt.figure(figsize=(18,12))
-    # for i, activation in enumerate(time_dict):
-    #     plt.subplot(1,len(time_dict),i+1)
-    #     plt.title(activation)
-    #     for reg_type in time_dict[activation]:
-    #         plt.plot(time_dict[activation][reg_type],label=reg_type)
-    #     plt.xlabel("epochs")
-    #     plt.ylabel("time(sec)")
-    # plt.legend()
-    # plt.show()
+    plt.figure(figsize=(18,12))
+    for i, activation in enumerate(time_dict):
+        plt.subplot(1,len(time_dict),i+1)
+        plt.title(activation)
+        for reg_type in time_dict[activation]:
+            plt.plot(time_dict[activation][reg_type],label=reg_type)
+        plt.xlabel("epochs")
+        plt.ylabel("time(sec)")
+    plt.legend()
+    plt.show()
     for activation in time_dict:
         for reg_type in time_dict[activation]:
             print("Time {}/{}:  {}".format(activation, reg_type, sum(time_dict[activation][reg_type])))
+    # loss graph
+    plt.figure(figsize=(18,12))
+    for i, activation in enumerate(loss_dict):
+        plt.subplot(1,len(loss_dict),i+1)
+        plt.title(activation)
+        for reg_type in loss_dict[activation]:
+            plt.plot(loss_dict[activation][reg_type],label=reg_type)
+        plt.xlabel("epochs")
+        plt.ylabel("loss(sec)")
+    plt.legend()
+    plt.show()
 
 if __name__ == '__main__':
     main()

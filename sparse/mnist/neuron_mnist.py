@@ -17,18 +17,17 @@ class Net(nn.Module):
         self.fc3 = nn.Linear(100, 10)
         self.activations = nn.ModuleDict([
             ['relu', nn.ReLU()],
-            ['lrelu', nn.LeakyReLU()],
-            ['prelu', nn.PReLU()]
+            ['lrelu', nn.LeakyReLU()]
         ])
-        if reg_type == "l2":
-            self.lambda1 = 0.
-            self.lambda2 = 0.001
-        elif reg_type == "l1":
-            self.lambda1 = 0.001
+        if reg_type == "l1":
+            self.lambda1 = 0.01
             self.lambda2 = 0.
+        elif reg_type == "l2":
+            self.lambda1 = 0.
+            self.lambda2 = 0.01
         elif reg_type == "elastic":
-            self.lambda1 = 0.0009
-            self.lambda2 = 0.0001
+            self.lambda1 = 0.005
+            self.lambda2 = 0.005
         else: # base case
             self.lambda1 = 0.
             self.lambda2 = 0.
@@ -52,7 +51,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
-        l1_regularization, l2_regularization = torch.tensor(0.).to(device), torch.tensor(0.).to(device)
+        # l1_regularization, l2_regularization = torch.tensor(0.).to(device), torch.tensor(0.).to(device)
         optimizer.zero_grad()
         output = model(data)
         nll_loss = F.nll_loss(output, target)
@@ -62,8 +61,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
         after_fc2 = model.activations[model.activation](model.fc2(after_fc1))
         after_fc3 = model.activations[model.activation](model.fc3(after_fc2))
         l1_regularization = torch.norm(after_fc1, 1) + torch.norm(after_fc2, 1) + torch.norm(after_fc3, 1)
-        l2_regularization = torch.norm(after_fc1, 2) + torch.norm(after_fc2, 2) + torch.norm(after_fc3, 2)
-        loss = nll_loss + model.lambda1 * l1_regularization + model.lambda2 * l2_regularization
+        # l2_regularization = torch.norm(after_fc1, 2) + torch.norm(after_fc2, 2) + torch.norm(after_fc3, 2)
+        loss = nll_loss + model.lambda1 * l1_regularization# + model.lambda2 * l2_regularization
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
@@ -71,6 +70,7 @@ def train(args, model, device, train_loader, optimizer, epoch):
                 model.activation, model.reg_type,
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
+            # print(model.fc1.weight.grad)
 
 def test(args, model, device, test_loader):
     model.eval()
@@ -110,7 +110,8 @@ def main():
                         help='how many batches to wait before logging training status')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
-    for manualSeed in [111*(i+1) for i in range(9)]:
+    for manualSeed in [1*(i+1) for i in range(9)]:
+    # for manualSeed in [2]:
         # manualSeed = random.randint(1, 10000) # use if you want new results
         print("Random Seed: ", manualSeed)
         # random.seed(manualSeed)
@@ -120,11 +121,11 @@ def main():
 
         kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
         train_loader = torch.utils.data.DataLoader(
-            datasets.MNIST('../data', train=True, download=True,
+            torch.utils.data.Subset(datasets.MNIST('../data', train=True, download=True,
                            transform=transforms.Compose([
                                transforms.ToTensor(),
                                transforms.Normalize((0.1307,), (0.3081,))
-                           ])),
+                           ])), range(30000)),
             batch_size=args.batch_size, shuffle=True, **kwargs)
         test_loader = torch.utils.data.DataLoader(
             datasets.MNIST('../data', train=False, transform=transforms.Compose([
@@ -132,11 +133,11 @@ def main():
                                transforms.Normalize((0.1307,), (0.3081,))
                            ])),
             batch_size=args.test_batch_size, shuffle=True, **kwargs)
-        print("Training/Test Data size: {}, {}".format(len(train_loader), len(test_loader)))
-        for activation in ['relu', 'lrelu','prelu']:
-            for reg_type in ["base", "L1", "L2", "elastic"]:
+        print("Training/Test Data size: {}, {}".format(len(train_loader.dataset), len(test_loader.dataset)))
+        for activation in ['relu', 'lrelu']:
+            for reg_type in ["base", "L1", "L2"]:
                 model = Net(activation=activation, reg_type=reg_type).to(device)
-                optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+                optimizer = optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=model.lambda2)
                 losses = []
                 accuracies = []
                 test_times = []
@@ -158,13 +159,13 @@ def main():
                         'model_state_dict': model.state_dict(),
                         'optimizer_state_dict': optimizer.state_dict(),
                         }, PATH)
-                print("\nModel saved in \n" + PATH)
+                print("\nModel saved in {}\n".format(PATH))
         # load and accuracy comparison
         print("\nRandom Seed\n: ", manualSeed)
-        for activation in ['relu', 'lrelu', 'prelu']:
+        for activation in ['relu', 'lrelu']:
             for reg_type in ["base", "L1", "L2"]:
                 model = Net(activation=activation, reg_type=reg_type).to(device)
-                optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
+                optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=model.lambda2)
                 PATH = "./neu_saved_models/{}_{}_{}.pt".format(activation, reg_type, manualSeed)
                 checkpoint = torch.load(PATH)
                 model.load_state_dict(checkpoint['model_state_dict'])
