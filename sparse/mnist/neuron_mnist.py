@@ -1,5 +1,5 @@
 from __future__ import print_function
-import argparse
+import argparse, os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -16,8 +16,10 @@ class Net(nn.Module):
         self.fc2 = nn.Linear(300, 100)
         self.fc3 = nn.Linear(100, 10)
         self.activations = nn.ModuleDict([
+            ['soft_plus', nn.Softplus()],
             ['relu', nn.ReLU()],
-            ['lrelu', nn.LeakyReLU()]
+            ['lrelu', nn.LeakyReLU()],
+            ['prelu', nn.PReLU()]
         ])
         if reg_type == "l1":
             self.lambda1 = 0.01
@@ -37,7 +39,7 @@ class Net(nn.Module):
         x = x.view(-1, num_flat_features(x)) #flattened input 64 x 64 = 784
         x = self.activations[self.activation](self.fc1(x))
         x = self.activations[self.activation](self.fc2(x))
-        x = self.activations[self.activation](self.fc3(x))
+        x = self.fc3(x)
         return F.log_softmax(x, dim=1)
 
 def num_flat_features(x):
@@ -47,7 +49,7 @@ def num_flat_features(x):
         num_features *= s
     return num_features
 
-def train(args, model, device, train_loader, optimizer, epoch):
+def train(args, model, device, train_loader, optimizer, epoch, manualSeed):
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
         data, target = data.to(device), target.to(device)
@@ -61,13 +63,17 @@ def train(args, model, device, train_loader, optimizer, epoch):
         after_fc2 = model.activations[model.activation](model.fc2(after_fc1))
         after_fc3 = model.activations[model.activation](model.fc3(after_fc2))
         l1_regularization = torch.norm(after_fc1, 1) + torch.norm(after_fc2, 1) + torch.norm(after_fc3, 1)
+        l2_regularization = torch.norm(after_fc1, 2) + torch.norm(after_fc2, 2) + torch.norm(after_fc3, 2)
+        # l1_regularization = torch.nn.functional.l1_loss(after_fc1, torch.zeros(after_fc1.size(), device=device)) \
+        #                     + torch.nn.functional.l1_loss(after_fc2, torch.zeros(after_fc2.size(), device=device)) \
+        #                     + torch.nn.functional.l1_loss(after_fc3, torch.zeros(after_fc3.size(), device=device))
         # l2_regularization = torch.norm(after_fc1, 2) + torch.norm(after_fc2, 2) + torch.norm(after_fc3, 2)
-        loss = nll_loss + model.lambda1 * l1_regularization# + model.lambda2 * l2_regularization
+        loss = nll_loss + model.lambda1 * l1_regularization + model.lambda2 * l2_regularization
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
-            print('[{}][{}]Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                model.activation, model.reg_type,
+            print('({})[{}][{}]Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                manualSeed, model.activation, model.reg_type,
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader), loss.item()))
             # print(model.fc1.weight.grad)
@@ -125,7 +131,7 @@ def main():
                            transform=transforms.Compose([
                                transforms.ToTensor(),
                                transforms.Normalize((0.1307,), (0.3081,))
-                           ])), range(30000)),
+                           ])), range(35000)),
             batch_size=args.batch_size, shuffle=True, **kwargs)
         test_loader = torch.utils.data.DataLoader(
             datasets.MNIST('../data', train=False, transform=transforms.Compose([
@@ -134,23 +140,31 @@ def main():
                            ])),
             batch_size=args.test_batch_size, shuffle=True, **kwargs)
         print("Training/Test Data size: {}, {}".format(len(train_loader.dataset), len(test_loader.dataset)))
-        for activation in ['relu', 'lrelu']:
+        for activation in ['soft_plus','relu', 'prelu']:
             for reg_type in ["base", "L1", "L2"]:
                 model = Net(activation=activation, reg_type=reg_type).to(device)
-                optimizer = optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=model.lambda2)
+                optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.5, 0.999))
+                scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.9)
                 losses = []
                 accuracies = []
                 test_times = []
                 for epoch in range(1, args.epochs + 1):
-                    train(args, model, device, train_loader, optimizer, epoch)
+                    scheduler.step()
+                    train(args, model, device, train_loader, optimizer, epoch, manualSeed)
                     t1 = time.time()
                     test_loss, accuracy = test(args, model, device, test_loader)
                     test_time = time.time() - t1
                     losses.append(test_loss)
                     accuracies.append(accuracy)
                     test_times.append(test_time)
-
-                PATH = "./neu_saved_models/{}_{}_{}.pt".format(activation, reg_type, manualSeed)
+                PATH = "./n_saved_models/{}_{}-{}_{}-{}".format(
+                    len(train_loader.dataset),
+                    model.fc2.weight.size()[1], model.fc2.weight.size()[0],
+                    model.lambda1, model.lambda2)
+                if not os.path.exists(PATH):
+                    os.mkdir(PATH)
+                    print("Directory " , PATH ,  " Created ")
+                PATH += "/{}_{}_{}.pt".format(activation, reg_type, manualSeed)
                 torch.save({
                         'args': args,
                         'losses': losses,
@@ -162,11 +176,15 @@ def main():
                 print("\nModel saved in {}\n".format(PATH))
         # load and accuracy comparison
         print("\nRandom Seed\n: ", manualSeed)
-        for activation in ['relu', 'lrelu']:
+        for activation in ['soft_plus', 'relu', 'prelu']:
             for reg_type in ["base", "L1", "L2"]:
                 model = Net(activation=activation, reg_type=reg_type).to(device)
                 optim.Adagrad(model.parameters(), lr=args.lr, weight_decay=model.lambda2)
-                PATH = "./neu_saved_models/{}_{}_{}.pt".format(activation, reg_type, manualSeed)
+                PATH = "./n_saved_models/{}_{}-{}_{}-{}".format(
+                    len(train_loader.dataset),
+                    model.fc2.weight.size()[1], model.fc2.weight.size()[0],
+                    model.lambda1, model.lambda2)
+                PATH += "/{}_{}_{}.pt".format(activation, reg_type, manualSeed)
                 checkpoint = torch.load(PATH)
                 model.load_state_dict(checkpoint['model_state_dict'])
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

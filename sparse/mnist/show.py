@@ -24,7 +24,7 @@ def main():
     # load and accuracy comparison
     # acc_dict = {}
     # time_dict = {}
-    for activation in ['relu', 'lrelu']:
+    for activation in ['soft_plus', 'relu', 'prelu']:
         # acc_dict[activation] = {}
         # time_dict[activation] = {}
         for reg_type in ["base", "L1", "L2"]:
@@ -32,13 +32,17 @@ def main():
             # time_list=[]
             with SummaryWriter(comment= activation + reg_type) as w:
                 # for manualSeed in [2]:
-                for manualSeed in [111*(i+1) for i in range(9)]:
+                for manualSeed in [1*(i+1) for i in range(9)]:
                     # print("\nRandom Seed\n: ", manualSeed)
                     # checkpoint loading
-                    PATH = "./neu_saved_models/0.001-0.001/{}_{}_{}.pt".format(activation, reg_type, manualSeed)
+                    model = Net(activation=activation, reg_type=reg_type).to(device)
+                    PATH = "./n_saved_models/{}_{}-{}_{}-{}".format(
+                        35000,
+                        model.fc2.weight.size()[1], model.fc2.weight.size()[0],
+                        model.lambda1, model.lambda2)
+                    PATH += "/{}_{}_{}.pt".format(activation, reg_type, manualSeed)
                     checkpoint = torch.load(PATH)
                     args = checkpoint['args']
-                    model = Net(activation=activation, reg_type=reg_type).to(device)
                     optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
                     model.load_state_dict(checkpoint['model_state_dict'])
                     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

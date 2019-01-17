@@ -1,5 +1,4 @@
 from __future__ import print_function
-import argparse
 import torch
 import numpy as np
 import torch.nn as nn
@@ -8,7 +7,7 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 from torchvision import datasets, transforms
 import torchvision.utils as vutils
-from mnist import Net
+from neuron_mnist import Net
 
 
 def num_flat_features(x):
@@ -25,7 +24,7 @@ def main():
     acc_dict = {}
     time_dict = {}
     loss_dict = {}
-    for activation in ['relu', 'lrelu']:
+    for activation in ['soft_plus', 'relu', 'prelu']:
         acc_dict[activation] = {}
         time_dict[activation] = {}
         loss_dict[activation] = {}
@@ -35,12 +34,16 @@ def main():
             loss_list=[]
             for manualSeed in [1*(i+1) for i in range(9)]:
             # for manualSeed in [2]:
+                model = Net(activation=activation, reg_type=reg_type).to(device)
                 # print("\nRandom Seed\n: ", manualSeed)
                 # checkpoint loading
-                PATH = "./neu_saved_models/{}_{}_{}.pt".format(activation, reg_type, manualSeed)
+                PATH = "./n_saved_models/{}_{}-{}_{}-{}".format(
+                    35000,
+                    model.fc2.weight.size()[1], model.fc2.weight.size()[0],
+                    model.lambda1, model.lambda2)
+                PATH += "/{}_{}_{}.pt".format(activation, reg_type, manualSeed)
                 checkpoint = torch.load(PATH)
                 args = checkpoint['args']
-                model = Net(activation=activation, reg_type=reg_type).to(device)
                 optimizer = optim.SGD(model.parameters(), lr=args.lr, momentum=args.momentum)
                 model.load_state_dict(checkpoint['model_state_dict'])
                 optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -50,6 +53,7 @@ def main():
                 # checkpoint load end
                 acc_list.append(accuracies)
                 time_list.append(times)
+                loss_list.append(losses)
                 acc_dict[activation][reg_type] = np.mean(acc_list, axis=0)
                 time_dict[activation][reg_type] = np.mean(time_list, axis=0)
                 loss_dict[activation][reg_type] = np.mean(loss_list, axis=0)
@@ -95,7 +99,7 @@ def main():
         for reg_type in loss_dict[activation]:
             plt.plot(loss_dict[activation][reg_type],label=reg_type)
         plt.xlabel("epochs")
-        plt.ylabel("loss(sec)")
+        plt.ylabel("loss")
     plt.legend()
     plt.show()
 
