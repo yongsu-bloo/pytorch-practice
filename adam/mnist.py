@@ -33,9 +33,9 @@ class FC(nn.Module):
         self.activation = activation
         self.drop_rate = drop_rate
         self.type = 'fc'
-        self.fc1 = nn.Linear(784, 300)
-        self.fc2 = nn.Linear(300, 100)
-        self.fc3 = nn.Linear(100, 10)
+        self.fc1 = nn.Linear(784, 1000)
+        self.fc2 = nn.Linear(1000, 1000)
+        self.fc3 = nn.Linear(1000, 10)
         self.activations = nn.ModuleDict([
             ['relu', nn.ReLU()],
             ['sigmoid', nn.Sigmoid()]
@@ -108,20 +108,26 @@ def main():
                         help='momentum (default: 0.5)')
     parser.add_argument('--no-cuda', action='store_true', default=False,
                         help='disables CUDA training')
-    parser.add_argument('--log-interval', type=int, default=100, metavar='N',
-                        help='how many batches to wait before logging training status')
-    parser.add_argument('--betas', nargs='+', type=float, default=(0.9, 0.999), help='Beta values for Adam')
+    parser.add_argument('--seed', type=int, default=0,
+                        help='random seed to use. Default=0')
+    parser.add_argument('--weight-decay', '--wd', type=float, default=1e-6, metavar='W',
+                        help='weight decay (default: 0)')
+    parser.add_argument('--betas', nargs='+', type=float, default=(0.9, 0.999),
+                        help='Beta values for Adam')
     parser.add_argument('--model', type=str, default="fc",
                         help='Model type: [logistic, fc, cnn]')
     parser.add_argument('--optimizer', type=str, default="adam",
                         help='Optimizer type: [adam, adagrad, rmsprop]')
     parser.add_argument('--drop-rate', type=float, default=0.,
-                            help='Dropout rate to be zero')
+                        help='Dropout rate to be zero')
+    parser.add_argument('--save-dir', type=str, default="./saved_models/",
+                        help='Directory to be saved')
     args = parser.parse_args()
     use_cuda = not args.no_cuda and torch.cuda.is_available()
-    manual_seed = 1234
+    manual_seed = args.seed
     # print("Random Seed: ", manual_seed)
     # random.seed(manual_seed)
+    save_dir = args.save_dir
     torch.manual_seed(manual_seed)
 
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -150,10 +156,10 @@ def main():
                 else:
                     model = FC(activation=activation, drop_rate=args.drop_rate).to(device)
                 weight_decay = 1e-6 if model_type=="fc" else 0.
-                optimizers = {'adam': Adam(model.parameters(), lr=args.lr, weight_decay = weight_decay, betas=args.betas),
-                              'adagrad': optim.Adagrad(model.parameters(), lr=args.lr, weight_decay = weight_decay),
-                              'rmsprop': optim.RMSprop(model.parameters(), lr=args.lr, weight_decay = weight_decay, alpha=args.betas[1], eps=1e-08, momentum=0),
-                              'sgd': optim.SGD(model.parameters(), lr=args.lr, weight_decay=weight_decay, momentum=args.momentum)}
+                optimizers = {'adam': Adam(model.parameters(), lr=args.lr, weight_decay = args.weight_decay, betas=args.betas),
+                              'adagrad': optim.Adagrad(model.parameters(), lr=args.lr, weight_decay = args.weight_decay),
+                              'rmsprop': optim.RMSprop(model.parameters(), lr=args.lr, weight_decay = args.weight_decay, alpha=args.betas[1], eps=1e-08, momentum=0),
+                              'sgd': optim.SGD(model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)}
                 optimizer = optimizers[opt_type]
                 train_losses = []
                 test_losses = []
@@ -169,7 +175,7 @@ def main():
                     accuracies.append(accuracy)
                     test_times.append(test_time)
 
-                PATH = "./saved_models2000/{}/{}_{}_{}.pt".format("drop" if args.drop_rate else "base",activation, model_type, opt_type)
+                PATH = os.path.join(save_dir, "{}/{}_{}_{}.pt".format("drop" if args.drop_rate else "base",activation, model_type, opt_type))
                 torch.save({
                         'args': args,
                         'opt_type': opt_type,
